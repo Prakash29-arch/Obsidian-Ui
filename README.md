@@ -1,4 +1,5 @@
 # Obsidian UI
+<img width="1254" height="1254" alt="ObsidianUI" src="https://github.com/user-attachments/assets/df1e5369-bd28-4b4f-9b48-86a19bd9daf6" />
 
 **Obsidian UI** is a bash-based pipeline that ports a Samsung "stock" device
 configuration (build props, `floating_feature.xml`, SELinux policy, VNDK,
