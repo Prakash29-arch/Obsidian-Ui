@@ -1,0 +1,176 @@
+name: Obsidian UI Tools OS-15.
+
+on:
+  workflow_dispatch:
+    inputs:
+      BRANCH:
+        description: "Git branch to use (e.g. fifteen)"
+        required: true
+        default: "fifteen"
+      STOCK_DEVICE:
+        description: "STOCK_DEVICE_MODEL or None"
+        required: true
+        default: "SM-A135F"
+      TARGET_DEVICE:
+        description: "TARGET_DEVICE_MODEL."
+        required: true
+        default: "SM-S711B"
+      TARGET_DEVICE_CSC:
+        description: "TARGET_DEVICE_CSC. Not used for downloading (link handles that) — kept only because fifteen.sh requires it as an argument."
+        required: true
+        default: "INS"
+      TARGET_DEVICE_IMEI:
+        description: "TARGET_DEVICE_IMEI. Not used for downloading (link handles that) — kept only because fifteen.sh requires it as an argument."
+        required: true
+        default: "359702742841362"
+      FIRMWARE_LINK:
+        description: "Direct firmware download link (e.g. from samfw.com) for the exact version you want."
+        required: true
+      OUTPUT_FILESYSTEM:
+        description: "OUTPUT_FILESYSTEM. e.g erofs / ext4"
+        required: true
+        default: "erofs"
+      COMPRESS_IMG_TO_XZ:
+        description: "Compress IMG to XZ (True/False)"
+        required: true
+        default: "False"
+
+jobs:
+  build:
+    name: Run Obsidian UI Tools OS-15.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository.
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.BRANCH }}
+
+      - name: Cleaning junk files
+        uses: rokibhasansagar/slimhub_actions@v25.42.5
+
+      - name: Install Dependencies.
+        run: |
+          sudo apt update
+          sudo apt install -y p7zip-full lz4 liblz4-1 liblz4-dev libzstd1 libzstd-dev build-essential android-sdk-libsparse-utils f2fs-tools fuse2fs fuse e2fsprogs python3 python3-pip zipalign unzip openjdk-21-jdk jq perl xxd kmod erofs-utils linux-modules-extra-$(uname -r) aria2
+          sudo modprobe f2fs
+          sudo pip3 install gdown --break-system-packages
+          mkdir -p FW WORK OUT
+
+      - name: Download firmware ▶️ ${{ github.event.inputs.TARGET_DEVICE }}
+        run: |
+          set -e
+          FW_DIR="FW/${{ github.event.inputs.TARGET_DEVICE }}"
+          rm -rf "$FW_DIR"
+          mkdir -p "$FW_DIR"
+          cd "$FW_DIR"
+
+          FIRMWARE_LINK="${{ github.event.inputs.FIRMWARE_LINK }}"
+          echo "🔗 Downloading the EXACT specified firmware version (SamFWDumper-style)."
+
+          if [[ "$FIRMWARE_LINK" == *"drive.google.com"* || "$FIRMWARE_LINK" == *"drive.usercontent.google.com"* ]]; then
+            echo "Detected a Google Drive link — using gdown (handles Drive's large-file confirmation properly)."
+            gdown --fuzzy "$FIRMWARE_LINK" -O firmware_download --continue
+          else
+            # NOTE: do NOT force -o here — letting aria2 keep the server's real filename
+            # (via Content-Disposition) preserves the correct extension where possible.
+            aria2c -x 16 -s 16 --content-disposition-default-utf8=true --allow-overwrite=true "$FIRMWARE_LINK"
+          fi
+
+          REAL_FILE=$(ls -t | head -n1)
+          echo "Downloaded file: $REAL_FILE"
+
+          # Sanity check: real Samsung firmware packages are gigabytes, not megabytes.
+          # If this is small, we almost certainly got an error/HTML/login page, not firmware.
+          FILE_SIZE=$(stat -c%s "$REAL_FILE")
+          echo "File size: $FILE_SIZE bytes"
+          if [ "$FILE_SIZE" -lt 100000000 ]; then
+            echo "❌ Downloaded file is suspiciously small ($FILE_SIZE bytes) for firmware."
+            echo "First 500 bytes of the file (to help diagnose):"
+            head -c 500 "$REAL_FILE"
+            echo ""
+            echo "Check that FIRMWARE_LINK is a direct, unauthenticated download link (e.g. from samfw.com)."
+            exit 1
+          fi
+
+          # scripts/ObsidianRom.sh's EXTRACT_FIRMWARE already knows how to unpack a firmware
+          # package on its own (.zip, .xz, and raw *.tar.md5 files) — we don't duplicate that
+          # logic here. We only need to make sure the file has a name EXTRACT_FIRMWARE will
+          # recognize, then let it do the real work in the next step, untouched.
+          case "$REAL_FILE" in
+            *.md5|*.tar)
+              echo "File is already a Samsung tar/tar.md5 package — leaving filename as-is."
+              ;;
+            *)
+              FILETYPE=$(file -b "$REAL_FILE")
+              echo "Detected type: $FILETYPE"
+              case "$FILETYPE" in
+                *Zip*)
+                  [ "$REAL_FILE" = "firmware.zip" ] || mv "$REAL_FILE" firmware.zip
+                  echo "Renamed to firmware.zip for EXTRACT_FIRMWARE."
+                  ;;
+                *XZ*)
+                  [ "$REAL_FILE" = "firmware.tar.xz" ] || mv "$REAL_FILE" firmware.tar.xz
+                  echo "Renamed to firmware.tar.xz for EXTRACT_FIRMWARE."
+                  ;;
+                *)
+                  echo "❌ Unrecognized firmware format: $FILETYPE"
+                  echo "EXTRACT_FIRMWARE (scripts/ObsidianRom.sh) only handles .zip / .xz packages or raw *.tar.md5 files."
+                  echo "Paste this log so the extraction step can be extended for this format."
+                  exit 1
+                  ;;
+              esac
+              ;;
+          esac
+
+          ls -la
+          cd - > /dev/null
+
+      - name: Extract firmware
+        run: |
+          source scripts/ObsidianRom.sh
+          EXTRACT_FIRMWARE "FW/${{ github.event.inputs.TARGET_DEVICE }}"
+
+      - name: Start Rom Build For ${{ github.event.inputs.STOCK_DEVICE }}
+        run: |
+          sudo bash fifteen.sh "${{ github.event.inputs.STOCK_DEVICE }}" \
+            "${{ github.event.inputs.TARGET_DEVICE }}" \
+            "${{ github.event.inputs.TARGET_DEVICE_CSC }}" \
+            "${{ github.event.inputs.TARGET_DEVICE_IMEI }}" \
+            "${{ github.event.inputs.OUTPUT_FILESYSTEM }}"
+
+      - name: Compress *.img & make zip file before upload.
+        run: |
+          echo "BUILD_TIME=$(TZ='Asia/Dhaka' date '+%Y-%m-%d %I:%M:%S %p UTC+6')" >> $GITHUB_ENV
+
+          OUT_DIR="$(pwd)/OUT"
+          ZIP_NAME="${{ github.event.inputs.TARGET_DEVICE }}_Port_For_${{ github.event.inputs.STOCK_DEVICE }}.zip"
+          ZIP_PATH="$OUT_DIR/$ZIP_NAME"
+
+          if [ "${{ github.event.inputs.COMPRESS_IMG_TO_XZ }}" = "True" ]; then
+            echo "Compressing all .img files to .xz (level 9)..."
+            for img in "$OUT_DIR"/*.img; do
+              [ -f "$img" ] || continue
+              echo "Compressing $img"
+              sudo xz -9 -T0 "$img"
+            done
+            sudo rm -f "$OUT_DIR"/*.img
+          fi
+
+          echo "Creating zip: $ZIP_NAME"
+          7z a -tzip "$ZIP_PATH" "$OUT_DIR"/* -mx=5
+
+          echo "ZIP_PATH=$ZIP_PATH" >> $GITHUB_ENV
+
+      - name: Upload file in GoFile & Create Release.
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          STOCK_DEVICE: ${{ github.event.inputs.STOCK_DEVICE }}
+          TARGET_DEVICE: ${{ github.event.inputs.TARGET_DEVICE }}
+          OUTPUT_FILESYSTEM: ${{ github.event.inputs.OUTPUT_FILESYSTEM }}
+          COMPRESS_IMG_TO_XZ: ${{ github.event.inputs.COMPRESS_IMG_TO_XZ }}
+        run: |
+          bash release.sh
+
+      - name: Clean everything.
+        run: sudo rm -rf *
