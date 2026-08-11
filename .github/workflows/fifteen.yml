@@ -26,6 +26,7 @@ on:
       FIRMWARE_LINK:
         description: "Direct firmware download link (e.g. from samfw.com) for the exact version you want."
         required: true
+        default: "https://drive.usercontent.google.com/download?id=1p_I3_rO_7T-kwx_SfWDBGDhV3p1dgWDn&export=download&authuser=1&confirm=t&uuid=0d3830e5-0430-4c38-a563-d17183f65e9e&at=AFYLz4Nv5zW8gFcUK3k1iEBr0jQE:1786464122867"
       OUTPUT_FILESYSTEM:
         description: "OUTPUT_FILESYSTEM. e.g erofs / ext4"
         required: true
@@ -54,7 +55,7 @@ jobs:
           sudo apt update
           sudo apt install -y p7zip-full lz4 liblz4-1 liblz4-dev libzstd1 libzstd-dev build-essential android-sdk-libsparse-utils f2fs-tools fuse2fs fuse e2fsprogs python3 python3-pip zipalign unzip openjdk-21-jdk jq perl xxd kmod erofs-utils linux-modules-extra-$(uname -r) aria2
           sudo modprobe f2fs
-          sudo pip3 install gdown --break-system-packages
+          sudo pip3 install "gdown>=6.1.0" --break-system-packages
           mkdir -p FW WORK OUT
 
       - name: Download firmware ▶️ ${{ github.event.inputs.TARGET_DEVICE }}
@@ -70,7 +71,17 @@ jobs:
 
           if [[ "$FIRMWARE_LINK" == *"drive.google.com"* || "$FIRMWARE_LINK" == *"drive.usercontent.google.com"* ]]; then
             echo "Detected a Google Drive link — using gdown (handles Drive's large-file confirmation properly)."
-            gdown --fuzzy "$FIRMWARE_LINK" -O firmware_download --continue
+            # Google's own "confirm/uuid/at" download URLs are tied to the browser
+            # session that generated them and expire almost immediately — replaying
+            # them later (e.g. from a workflow input) gets an Internal Server Error.
+            # Pull out just the stable file ID and build a clean link for gdown.
+            DRIVE_ID=$(echo "$FIRMWARE_LINK" | grep -oP '(?:id=|/d/)\K[a-zA-Z0-9_-]+' | head -n1)
+            if [ -z "$DRIVE_ID" ]; then
+              echo "❌ Could not extract a Google Drive file ID from FIRMWARE_LINK."
+              exit 1
+            fi
+            echo "Extracted Drive file ID: $DRIVE_ID"
+            gdown "https://drive.google.com/uc?id=$DRIVE_ID" -O firmware_download --continue
           else
             # NOTE: do NOT force -o here — letting aria2 keep the server's real filename
             # (via Content-Disposition) preserves the correct extension where possible.
