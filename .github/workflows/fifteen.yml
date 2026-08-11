@@ -26,7 +26,7 @@ on:
       FIRMWARE_LINK:
         description: "Direct firmware download link (e.g. from samfw.com) for the exact version you want."
         required: true
-        default:"https://drive.usercontent.google.com/download?id=1p_I3_rO_7T-kwx_SfWDBGDhV3p1dgWDn&export=download&authuser=1&confirm=t&uuid=0d3830e5-0430-4c38-a563-d17183f65e9e&at=AFYLz4Nv5zW8gFcUK3k1iEBr0jQE:1786464122867"
+        default: "https://drive.usercontent.google.com/download?id=1p_I3_rO_7T-kwx_SfWDBGDhV3p1dgWDn&export=download&authuser=1&confirm=t&uuid=0d3830e5-0430-4c38-a563-d17183f65e9e&at=AFYLz4Nv5zW8gFcUK3k1iEBr0jQE:1786464122867"
       OUTPUT_FILESYSTEM:
         description: "OUTPUT_FILESYSTEM. e.g erofs / ext4"
         required: true
