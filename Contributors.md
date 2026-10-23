@@ -1,0 +1,5 @@
+## RIL
+ro.radio.noril=no
+ro.vendor.multisim.simslotcount=2
+persist.radio.multisim.config=dsds
+
