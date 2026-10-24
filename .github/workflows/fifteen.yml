@@ -18,7 +18,7 @@ on:
       TARGET_DEVICE_CSC:
         description: "TARGET_DEVICE_CSC. Not used for downloading (link handles that) — kept only because fifteen.sh requires it as an argument."
         required: true
-        default: "INS"
+        default: "USA"
       TARGET_DEVICE_IMEI:
         description: "TARGET_DEVICE_IMEI. Not used for downloading (link handles that) — kept only because fifteen.sh requires it as an argument."
         required: true
