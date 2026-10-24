@@ -22,7 +22,7 @@ on:
       TARGET_DEVICE_IMEI:
         description: "TARGET_DEVICE_IMEI. Not used for downloading (link handles that) — kept only because fifteen.sh requires it as an argument."
         required: true
-        default: "123456789"
+        default: "359702742841362"
       FIRMWARE_LINK:
         description: "Direct firmware download link (e.g. from samfw.com) for the exact version you want."
         required: true
