@@ -10,7 +10,7 @@ on:
       STOCK_DEVICE:
         description: "STOCK_DEVICE_MODEL or None"
         required: true
-        default: "A13"
+        default: "SM-A135F"
       TARGET_DEVICE:
         description: "TARGET_DEVICE_MODEL."
         required: true
